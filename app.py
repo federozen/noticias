@@ -5,27 +5,10 @@ import pandas as pd
 
 # Función para scrapear noticias de una URL dada
 def scrape_news(url, headline_selector, title_attribute="text", limit=15, club_names=None, start_index=0, num_to_fetch=None):
-    """
-    Scrapes news headlines from a given URL and returns them as a list.
-
-    Args:
-        url: The URL of the news website.
-        headline_selector: A CSS selector to find headline elements.
-        title_attribute: The attribute to extract from the headline element (default: 'text').
-        limit: The maximum number of headlines to scrape (default: 15).
-        club_names: A list of club names to exclude from TyC Sports scraping (optional).
-        start_index: The starting index for scraping headlines (default: 0).
-        num_to_fetch: The number of headlines to fetch (optional).
-
-    Returns:
-        A list of scraped headlines.
-    """
     try:
-        # Realizar solicitud GET a la URL
+        st.write(f"Scrapeando desde: {url}")
         res = requests.get(url, timeout=10)
         res.raise_for_status()
-
-        # Parsear contenido HTML con BeautifulSoup
         soup = BeautifulSoup(res.content, "html.parser")
 
         # Lógica para TyC Sports (si aplica)
@@ -43,7 +26,6 @@ def scrape_news(url, headline_selector, title_attribute="text", limit=15, club_n
         else:
             # Selección de titulares mediante CSS selector
             if isinstance(headline_selector, list):
-                # Manejo de múltiples selectores
                 headlines = []
                 for selector in headline_selector:
                     elements = soup.select(selector)
@@ -65,13 +47,14 @@ def scrape_news(url, headline_selector, title_attribute="text", limit=15, club_n
                     if headline:
                         headlines.append(headline.strip())
 
+        st.write(f"Titulares encontrados: {len(headlines)}")
         return headlines[:limit]
 
     except requests.exceptions.RequestException as e:
         st.error(f"Error scraping {url}: {e}")
         return []
     except Exception as e:
-        st.error(f"Ocurrió un error inesperado al scrapear {url}: {e}")
+        st.error(f"Ocurrió un error inesperado al scrapeado {url}: {e}")
         return []
 
 # Fuentes de noticias con sus respectivos selectores y límites
@@ -84,7 +67,7 @@ news_sources = {
     "Globo Esporte": {
         "url": "https://ge.globo.com/",
         "selector": ["h2.bstn-hl-title.gui-color-primary.gui-color-hover.gui-color-primary-bg-after", "h2", "h1"],
-        "limit": 20
+        "limit": [10, 10, 5]  # Ajusta los límites según sea necesario
     },
     "La Tercera de Chile": {"url": "https://www.latercera.com/canal/el-deportivo/", "selector": "h6", "limit": 20},
     "Observador Uruguay": {"url": "https://www.elobservador.com.uy/referi", "selector": "h2.titulo", "limit": 15},
@@ -130,7 +113,6 @@ def get_headlines(selected_sources):
 
         # Manejo de múltiples selectores y límites
         if isinstance(selector, list):
-            headlines = []
             for i, sel in enumerate(selector):
                 lim = limit[i] if isinstance(limit, list) else limit
                 st_index = start_index[i] if isinstance(start_index, list) else start_index
@@ -142,9 +124,9 @@ def get_headlines(selected_sources):
                     num_to_fetch=num_to_fetch,
                     club_names=club_names
                 )
-                headlines.extend(hl)
+                all_headlines.extend([(source_name, headline) for headline in hl if headline])
         else:
-            headlines = scrape_news(
+            hl = scrape_news(
                 url,
                 selector,
                 limit=limit,
@@ -152,8 +134,7 @@ def get_headlines(selected_sources):
                 num_to_fetch=num_to_fetch,
                 club_names=club_names
             )
-
-        all_headlines.extend([(source_name, headline) for headline in headlines if headline])
+            all_headlines.extend([(source_name, headline) for headline in hl if headline])
 
     df = pd.DataFrame(all_headlines, columns=["Fuente", "Titular"])
     return df
