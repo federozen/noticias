@@ -1,63 +1,59 @@
+# app.py
+
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-import pandas as pd
+import openai
+from pydub import AudioSegment
+import tempfile
+import os
 
-st.set_page_config(page_title="Scraper de Noticias Deportivas", layout="wide")
-st.title("Scraper de Noticias Deportivas")
-st.markdown("### Obtén los titulares de noticias deportivas desde varias fuentes.")
-
-# Función para scrapeear titulares de una URL dada
-def scrape_headlines(url, selector):
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
-        elements = soup.select(selector)
-        headlines = [element.get_text(strip=True) for element in elements if element.get_text(strip=True)]
-        return headlines
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error al acceder a {url}: {e}")
-        return []
-    except Exception as e:
-        st.error(f"Error al procesar {url}: {e}")
-        return []
-
-# Diccionario con fuentes de noticias y sus selectores CSS
-news_sources = {
-    "BBC Deportes": {
-        "url": "https://www.bbc.com/mundo/topics/cyx5krnw38vt",
-        "selector": "h3.gs-c-promo-heading__title"
-    },
-    "Marca": {
-        "url": "https://www.marca.com/futbol/",
-        "selector": "a.title"
-    },
-    "ESPN": {
-        "url": "https://www.espn.com.mx/futbol/",
-        "selector": "h1.headline__title"
-    }
-}
-
-# Selección de fuentes de noticias
-selected_sources = st.multiselect(
-    "Selecciona las fuentes de noticias:",
-    options=list(news_sources.keys()),
-    default=list(news_sources.keys())
+# Configuración de la página
+st.set_page_config(
+    page_title="MP3 a Texto con OpenAI",
+    page_icon="🎤",
+    layout="centered",
+    initial_sidebar_state="auto",
 )
 
-# Botón para actualizar los datos
-if st.button("Actualizar Titulares"):
-    all_headlines = []
-    for source in selected_sources:
-        st.write(f"Scrapeando desde: **{source}**")
-        url = news_sources[source]["url"]
-        selector = news_sources[source]["selector"]
-        headlines = scrape_headlines(url, selector)
-        if headlines:
-            df = pd.DataFrame(headlines, columns=["Titulares"])
-            st.table(df)
-        else:
-            st.write("No se encontraron titulares.")
+# Título de la aplicación
+st.title("🎤 Convertidor de MP3 a Texto usando OpenAI")
 
-    st.success("Titulares actualizados correctamente.")
+# Instrucciones
+st.write("""
+Sube un archivo de audio en formato MP3 y conviértelo a texto utilizando la potente API de OpenAI.
+""")
+
+# Carga del archivo
+uploaded_file = st.file_uploader("Elige un archivo MP3", type=["mp3"])
+
+if uploaded_file is not None:
+    with st.spinner("Procesando..."):
+        try:
+            # Guardar el archivo subido en un archivo temporal
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_mp3:
+                temp_mp3.write(uploaded_file.read())
+                temp_mp3_path = temp_mp3.name
+
+            # Convertir MP3 a WAV usando pydub (opcional, dependiendo de la API)
+            audio = AudioSegment.from_mp3(temp_mp3_path)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
+                audio.export(temp_wav.name, format="wav")
+                temp_wav_path = temp_wav.name
+
+            # Configurar la clave de API de OpenAI desde los secretos de Streamlit
+            openai.api_key = st.secrets["openai"]["api_key"]
+
+            # Leer el archivo de audio
+            with open(temp_wav_path, "rb") as audio_file:
+                # Usar la API de transcripción de OpenAI (Whisper)
+                transcript = openai.Audio.transcribe("whisper-1", audio_file)
+
+            # Mostrar el texto transcrito
+            st.success("¡Transcripción completada!")
+            st.text_area("Texto Transcrito", transcript["text"], height=300)
+
+            # Limpiar archivos temporales
+            os.remove(temp_mp3_path)
+            os.remove(temp_wav_path)
+
+        except Exception as e:
+            st.error(f"Ocurrió un error durante la transcripción: {e}")
